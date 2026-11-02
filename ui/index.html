@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Factory Control Plane</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">□</div>
+        <span>Factory Control Plane</span>
+      </div>
+
+      <nav class="nav" aria-label="Primary">
+        <button class="nav-item active" type="button">
+          <span aria-hidden="true">~</span>
+          <span>Runs</span>
+          <strong id="navRunCount">0</strong>
+        </button>
+        <button class="nav-item" type="button" disabled>
+          <span aria-hidden="true">▥</span>
+          <span>Analytics</span>
+        </button>
+        <button class="nav-item" type="button" disabled>
+          <span aria-hidden="true">▤</span>
+          <span>Workers</span>
+        </button>
+        <button class="nav-item" type="button" disabled>
+          <span aria-hidden="true">↻</span>
+          <span>Triggers</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div><span aria-hidden="true">▤</span> <span>1 worker online</span></div>
+        <div><span aria-hidden="true">◐</span> <span>Dark theme</span></div>
+      </div>
+    </aside>
+
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Runs</h1>
+          <p id="statusLine">Loading runs</p>
+        </div>
+        <button class="primary-button" id="newRunButton" type="button">
+          <span aria-hidden="true">+</span>
+          <span>New run</span>
+        </button>
+      </header>
+
+      <section class="toolbar" aria-label="Run filters and views">
+        <div class="filters">
+          <button class="filter active" type="button" data-filter="all">All <span id="countAll">0</span></button>
+          <button class="filter" type="button" data-filter="active">Active <span id="countActive">0</span></button>
+          <button class="filter" type="button" data-filter="failed">Failed <span id="countFailed">0</span></button>
+          <button class="filter" type="button" data-filter="succeeded">Succeeded <span id="countSucceeded">0</span></button>
+        </div>
+        <div class="view-toggle" role="group" aria-label="View mode">
+          <button class="view-button active" type="button" data-view="board">▦ Board</button>
+          <button class="view-button" type="button" data-view="table">▤ Table</button>
+        </div>
+      </section>
+
+      <section class="board" id="boardView" aria-label="Runs board">
+        <section class="lane" data-lane="queued">
+          <header>
+            <div>
+              <h2>Queued</h2>
+              <p>Waiting to start</p>
+            </div>
+            <strong id="queuedCount">0</strong>
+          </header>
+          <div class="lane-list" id="queuedList"></div>
+        </section>
+
+        <section class="lane" data-lane="running">
+          <header>
+            <div>
+              <h2>Running</h2>
+              <p>In progress</p>
+            </div>
+            <strong id="runningCount">0</strong>
+          </header>
+          <div class="lane-list" id="runningList"></div>
+        </section>
+
+        <section class="lane" data-lane="finished">
+          <header>
+            <div>
+              <h2>Finished</h2>
+              <p>Terminal tasks</p>
+            </div>
+            <strong id="finishedCount">0</strong>
+          </header>
+          <div class="lane-list" id="finishedList"></div>
+        </section>
+      </section>
+
+      <section class="table-view hidden" id="tableView" aria-label="Runs table">
+        <table>
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Workflow</th>
+              <th>Status</th>
+              <th>Updated</th>
+              <th>Latest event</th>
+            </tr>
+          </thead>
+          <tbody id="jobsTableBody"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <aside class="drawer" id="detailDrawer" aria-label="Run details" aria-hidden="true">
+      <div class="drawer-header">
+        <div>
+          <p>Run detail</p>
+          <h2 id="detailTitle">Select a run</h2>
+        </div>
+        <button class="icon-button" id="closeDrawerButton" type="button" aria-label="Close details">×</button>
+      </div>
+      <div class="drawer-body" id="detailBody"></div>
+    </aside>
+
+    <dialog id="newRunDialog">
+      <form id="newRunForm" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p>Factory job</p>
+            <h2>New run</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeDialogButton" aria-label="Close new run">×</button>
+        </div>
+
+        <label>
+          Workflow
+          <select id="workflowSelect" name="workflowId" required></select>
+        </label>
+
+        <label>
+          Title
+          <input id="titleInput" name="title" required placeholder="Add registration validation">
+        </label>
+
+        <label>
+          Description
+          <textarea id="descriptionInput" name="description" required rows="5" placeholder="Validate phone number during customer registration"></textarea>
+        </label>
+
+        <div class="dialog-actions">
+          <button class="secondary-button" type="button" id="cancelRunButton">Cancel</button>
+          <button class="primary-button" type="submit">
+            <span aria-hidden="true">+</span>
+            <span>Create run</span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
