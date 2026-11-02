@@ -23,20 +23,48 @@ There is no API Gateway, ECS, EC2, RDS, NAT Gateway, VPC, SAM, or CDK.
 ## Flow
 
 ```text
-Browser / API client
-→ control-plane Lambda
-→ DynamoDB job record
-→ SQS queue
-→ worker Lambda
-→ DynamoDB status/event update
+                                      ┌──────────────────────┐
+                                      │      DynamoDB        │
+                                      │  job record + events │
+                                      └──────────▲───────────┘
+                                                 │
+                                                 │ update status/events
+                                                 │
+┌──────────────────────┐      POST /jobs      ┌──┴───────────────────┐
+│ Browser / API client │ ───────────────────▶ │ control-plane Lambda │
+└──────────────────────┘                       └──┬───────────────────┘
+                                                  │
+                     writes SUBMITTED             │ sends message
+                     then QUEUED                  ▼
+                                      ┌──────────────────────┐
+                                      │      SQS queue       │
+                                      └──────────┬───────────┘
+                                                 │ triggers
+                                                 ▼
+                                      ┌──────────────────────┐
+                                      │    worker Lambda     │
+                                      └──────────┬───────────┘
+                                                 │ writes PICKED_UP
+                                                 ▼
+                                      ┌──────────────────────┐
+                                      │      DynamoDB        │
+                                      │  updated job record  │
+                                      └──────────────────────┘
 ```
 
 For a submitted job, the current lifecycle is:
 
 ```text
-SUBMITTED
-QUEUED
-PICKED_UP
+POST /jobs
+  │
+  ▼
+SUBMITTED  - control plane accepted and stored the job
+  │
+  ▼
+QUEUED     - control plane sent the job message to SQS
+  │
+  ▼
+PICKED_UP  - worker Lambda received the SQS message
 ```
 
 The worker currently only proves that it received the job from SQS. It does not perform real software-factory work yet.
