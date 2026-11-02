@@ -22,34 +22,20 @@ There is no API Gateway, ECS, EC2, RDS, NAT Gateway, VPC, SAM, or CDK.
 
 ## Flow
 
-```text
-                                      ┌──────────────────────┐
-                                      │      DynamoDB        │
-                                      │  job record + events │
-                                      └──────────▲───────────┘
-                                                 │
-                                                 │ update status/events
-                                                 │
-┌──────────────────────┐      POST /jobs      ┌──┴───────────────────┐
-│ Browser / API client │ ───────────────────▶ │ control-plane Lambda │
-└──────────────────────┘                       └──┬───────────────────┘
-                                                  │
-                     writes SUBMITTED             │ sends message
-                     then QUEUED                  ▼
-                                      ┌──────────────────────┐
-                                      │      SQS queue       │
-                                      └──────────┬───────────┘
-                                                 │ triggers
-                                                 ▼
-                                      ┌──────────────────────┐
-                                      │    worker Lambda     │
-                                      └──────────┬───────────┘
-                                                 │ writes PICKED_UP
-                                                 ▼
-                                      ┌──────────────────────┐
-                                      │      DynamoDB        │
-                                      │  updated job record  │
-                                      └──────────────────────┘
+```mermaid
+flowchart LR
+    client[Browser / API client]
+    control[control-plane Lambda]
+    queue[SQS queue]
+    worker[worker Lambda]
+    db[(DynamoDB jobs table)]
+
+    client -- "POST /jobs" --> control
+    control -- "1. write SUBMITTED event" --> db
+    control -- "2. update status to QUEUED" --> db
+    control -- "3. send job message" --> queue
+    queue -- "triggers" --> worker
+    worker -- "4. update status to PICKED_UP" --> db
 ```
 
 For a submitted job, the current lifecycle is:
