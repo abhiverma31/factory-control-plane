@@ -23,19 +23,19 @@ There is no API Gateway, ECS, EC2, RDS, NAT Gateway, VPC, SAM, or CDK.
 ## Flow
 
 ```mermaid
-sequenceDiagram
-    participant Client as Browser / API client
-    participant Control as control-plane Lambda
-    participant DB as DynamoDB jobs table
-    participant Queue as SQS queue
-    participant Worker as worker Lambda
+flowchart TD
+    client[Browser / API client]
+    control[control-plane Lambda]
+    db[(DynamoDB jobs table)]
+    queue[SQS queue]
+    worker[worker Lambda]
 
-    Client->>Control: POST /jobs
-    Control->>DB: write job as SUBMITTED
-    Control->>Queue: send job message
-    Control->>DB: record QUEUED after SQS send succeeds
-    Queue->>Worker: trigger with queued message
-    Worker->>DB: update job to PICKED_UP
+    client -->|POST /jobs| control
+    control -->|1. write SUBMITTED job| db
+    control -->|2. send job message| queue
+    control -->|3. record QUEUED after send succeeds| db
+    queue -->|4. trigger worker| worker
+    worker -->|5. update PICKED_UP| db
 ```
 
 For a submitted job, the current lifecycle is:
