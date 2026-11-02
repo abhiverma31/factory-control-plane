@@ -31,9 +31,9 @@ flowchart LR
     db[(DynamoDB jobs table)]
 
     client -- "POST /jobs" --> control
-    control -- "1. write SUBMITTED event" --> db
-    control -- "2. update status to QUEUED" --> db
-    control -- "3. send job message" --> queue
+    control -- "1. write SUBMITTED job" --> db
+    control -- "2. send job message" --> queue
+    control -- "3. record QUEUED after send succeeds" --> db
     queue -- "triggers" --> worker
     worker -- "4. update status to PICKED_UP" --> db
 ```
