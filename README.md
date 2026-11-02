@@ -59,12 +59,6 @@ The worker currently only proves that it received the job from SQS. It does not 
 
 The Lambda Function URL serves the prototype UI at `/` and exposes the control-plane API.
 
-### Health
-
-```http
-GET /health
-```
-
 ### Workflows
 
 ```http
