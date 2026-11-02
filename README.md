@@ -57,27 +57,12 @@ The worker currently only proves that it received the job from SQS. It does not 
 
 ## API
 
-The same Lambda Function URL serves both the UI and JSON API.
-
-### UI
-
-```http
-GET /
-GET /index.html
-GET /styles.css
-GET /app.js
-```
+The Lambda Function URL serves the prototype UI at `/` and exposes the control-plane API.
 
 ### Health
 
 ```http
 GET /health
-```
-
-Returns:
-
-```json
-{"ok": true}
 ```
 
 ### Workflows
