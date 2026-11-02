@@ -191,6 +191,10 @@ async function openDetails(jobId) {
   elements.detailTitle.textContent = job.title || "Untitled run";
   elements.detailBody.innerHTML = `
     <div class="detail-block">
+      <div class="meta">Job ID</div>
+      <p>${escapeHtml(job.jobId || "")}</p>
+    </div>
+    <div class="detail-block">
       <div class="meta">Status</div>
       ${statusBadge(job.status)}
     </div>
