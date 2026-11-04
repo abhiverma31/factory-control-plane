@@ -35,6 +35,17 @@ data "archive_file" "worker" {
   output_path = "${path.module}/worker.zip"
 }
 
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
 resource "aws_cloudwatch_log_group" "control_plane" {
   name              = "/aws/lambda/${var.project_name}-control-plane"
   retention_in_days = 3
@@ -42,6 +53,11 @@ resource "aws_cloudwatch_log_group" "control_plane" {
 
 resource "aws_cloudwatch_log_group" "worker" {
   name              = "/aws/lambda/${var.project_name}-worker"
+  retention_in_days = 3
+}
+
+resource "aws_cloudwatch_log_group" "harness" {
+  name              = "/ecs/${var.project_name}-harness"
   retention_in_days = 3
 }
 
@@ -73,6 +89,40 @@ resource "aws_iam_role" "worker_lambda" {
         Action = "sts:AssumeRole"
         Principal = {
           Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "harness_task_execution" {
+  name = "${var.project_name}-harness-task-execution-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = "sts:AssumeRole"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "harness_task" {
+  name = "${var.project_name}-harness-task-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = "sts:AssumeRole"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
         }
       }
     ]
@@ -117,6 +167,11 @@ resource "aws_iam_role_policy" "worker_lambda_logs" {
   })
 }
 
+resource "aws_iam_role_policy_attachment" "harness_task_execution" {
+  role       = aws_iam_role.harness_task_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
 resource "aws_lambda_function" "control_plane" {
   function_name = "${var.project_name}-control-plane"
   role          = aws_iam_role.control_plane_lambda.arn
@@ -156,7 +211,12 @@ resource "aws_lambda_function" "worker" {
 
   environment {
     variables = {
-      JOBS_TABLE = aws_dynamodb_table.jobs.name
+      JOBS_TABLE                = aws_dynamodb_table.jobs.name
+      HARNESS_CLUSTER_ARN       = aws_ecs_cluster.factory.arn
+      HARNESS_TASK_DEFINITION   = aws_ecs_task_definition.harness.arn
+      HARNESS_SUBNET_IDS        = join(",", data.aws_subnets.default.ids)
+      HARNESS_SECURITY_GROUP_ID = aws_security_group.harness.id
+      CONTROL_PLANE_URL         = aws_lambda_function_url.control_plane.function_url
     }
   }
 
@@ -191,6 +251,10 @@ resource "aws_sqs_queue" "queue" {
 
   message_retention_seconds  = 86400
   visibility_timeout_seconds = 30
+}
+
+resource "aws_ecs_cluster" "factory" {
+  name = "${var.project_name}-cluster"
 }
 
 resource "aws_iam_role_policy" "control_plane_lambda_queue" {
@@ -245,6 +309,35 @@ resource "aws_iam_role_policy" "worker_lambda_dynamodb" {
   })
 }
 
+resource "aws_iam_role_policy" "worker_lambda_ecs" {
+  name = "${var.project_name}-worker-ecs"
+  role = aws_iam_role.worker_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:RunTask"
+        ]
+        Resource = aws_ecs_task_definition.harness.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:PassRole"
+        ]
+        Resource = [
+          aws_iam_role.harness_task_execution.arn,
+          aws_iam_role.harness_task.arn
+        ]
+      }
+    ]
+  })
+}
+
+
 resource "aws_dynamodb_table" "jobs" {
   name         = "${var.project_name}-jobs"
   billing_mode = "PAY_PER_REQUEST"
@@ -282,4 +375,49 @@ resource "aws_lambda_event_source_mapping" "worker_queue" {
   function_name    = aws_lambda_function.worker.arn
   batch_size       = 1
   enabled          = true
+}
+
+resource "aws_ecs_task_definition" "harness" {
+  family                   = "${var.project_name}-harness"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = aws_iam_role.harness_task_execution.arn
+  task_role_arn            = aws_iam_role.harness_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "harness"
+      image     = var.harness_image
+      essential = true
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.harness.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "harness"
+        }
+      }
+    }
+  ])
+}
+
+resource "aws_security_group" "harness" {
+  name        = "${var.project_name}-harness"
+  description = "Security group for factory harness Fargate tasks."
+  vpc_id      = data.aws_vpc.default.id
+
+  egress {
+    description = "Allow outbound internet access."
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_ecr_repository" "harness" {
+  name = "${var.project_name}/harness"
 }

@@ -9,3 +9,8 @@ variable "project_name" {
   type        = string
   default     = "factory-control-plane"
 }
+
+variable "harness_image" {
+  description = "Container image used by the factory harness Fargate task."
+  type        = string
+}

@@ -12,3 +12,8 @@ output "control_plane_log_group_arn" {
   description = "ARN of the control-plane CloudWatch log group."
   value       = aws_cloudwatch_log_group.control_plane.arn
 }
+
+output "harness_ecr_repository_url" {
+  description = "ECR repository URL for the factory harness image."
+  value       = aws_ecr_repository.harness.repository_url
+}

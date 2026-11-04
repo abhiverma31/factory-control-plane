@@ -4,6 +4,7 @@ import os
 import boto3
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 JOBS_TABLE = os.environ["JOBS_TABLE"]
@@ -40,6 +41,20 @@ WORKFLOWS = [
         "name": "Incident investigation",
     },
 ]
+APPENDABLE_EVENT_TYPES = {
+    "HARNESS_STARTED",
+    "HARNESS_COMPLETED",
+    "PR_CREATED",
+    "JOB_FAILED",
+}
+APPENDABLE_STATUSES = {
+    "HARNESS_COMPLETED",
+    "FAILED",
+}
+EVENT_STATUS_DEFAULTS = {
+    "HARNESS_COMPLETED": "HARNESS_COMPLETED",
+    "JOB_FAILED": "FAILED",
+}
 
 def lambda_handler(event, context):
     method = event.get("requestContext", {}).get("http", {}).get("method", "")
@@ -64,6 +79,11 @@ def lambda_handler(event, context):
         if len(parts) == 2 and parts[0] == "jobs":
             job_id = parts[1]
             return get_job(job_id)
+
+    if method == "POST" and path.startswith("/jobs/"):
+        parts = path.strip("/").split("/")
+        if len(parts) == 3 and parts[0] == "jobs" and parts[2] == "events":
+            return append_job_event(parts[1], event)
 
     if method == "GET" and path == "/health":
         return json_response(200, {"ok": True})
@@ -116,6 +136,8 @@ def create_job(event):
             {
                 "jobId": job["jobId"],
                 "workflowId": job["workflowId"],
+                "title": job["title"],
+                "description": job["description"],
             }
         ),
     )
@@ -173,7 +195,7 @@ def list_jobs():
             counts["active"] += 1
         elif status == "FAILED":
             counts["failed"] += 1
-        elif status == "ACKNOWLEDGED":
+        elif status == "HARNESS_COMPLETED":
             counts["succeeded"] += 1
 
         summaries.append(
@@ -216,6 +238,66 @@ def get_job_events(job_id):
     )
 
 
+def append_job_event(job_id, event):
+    body, error = parse_json_body(event)
+    if error:
+        return json_response(400, {"message": error})
+
+    event_type = body.get("type")
+    message = body.get("message")
+    status = body.get("status") or EVENT_STATUS_DEFAULTS.get(event_type)
+    details = body.get("details", {})
+
+    if event_type not in APPENDABLE_EVENT_TYPES:
+        return json_response(400, {"message": "Invalid event type"})
+
+    if not isinstance(message, str) or not message.strip():
+        return json_response(400, {"message": "message is required"})
+
+    if status is not None and status not in APPENDABLE_STATUSES:
+        return json_response(400, {"message": "Invalid status"})
+
+    if not isinstance(details, dict):
+        return json_response(400, {"message": "details must be an object"})
+
+    existing = jobs_table.get_item(Key={"jobId": job_id}).get("Item")
+    if not existing:
+        return json_response(404, {"message": "Job not found"})
+
+    now = utc_now()
+    lifecycle_event = {
+        "type": event_type,
+        "timestamp": now,
+        "message": message.strip(),
+    }
+    if details:
+        lifecycle_event["details"] = details
+
+    expression_names = {
+        "#events": "events",
+    }
+    expression_values = {
+        ":updatedAt": now,
+        ":events": [lifecycle_event],
+    }
+
+    if status:
+        update_expression = "SET #status = :status, updatedAt = :updatedAt, #events = list_append(#events, :events)"
+        expression_names["#status"] = "status"
+        expression_values[":status"] = status
+    else:
+        update_expression = "SET updatedAt = :updatedAt, #events = list_append(#events, :events)"
+
+    jobs_table.update_item(
+        Key={"jobId": job_id},
+        UpdateExpression=update_expression,
+        ExpressionAttributeNames=expression_names,
+        ExpressionAttributeValues=expression_values,
+    )
+
+    return get_job(job_id)
+
+
 def parse_json_body(event):
     raw_body = event.get("body") or ""
 
@@ -236,8 +318,15 @@ def json_response(status_code, body):
             "content-type": "application/json",
             **CORS_HEADERS,
         },
-        "body": json.dumps(body),
+        "body": json.dumps(body, default=json_default),
     }
+
+def json_default(value):
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return int(value)
+        return float(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 def static_response(path):
     filename, content_type = STATIC_ROUTES[path]

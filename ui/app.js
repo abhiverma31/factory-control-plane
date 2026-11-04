@@ -246,7 +246,7 @@ function laneForStatus(status) {
   if (status === "PICKED_UP") {
     return "running";
   }
-  if (status === "ACKNOWLEDGED" || status === "FAILED") {
+  if (status === "HARNESS_COMPLETED" || status === "FAILED") {
     return "finished";
   }
   return "queued";
@@ -258,7 +258,7 @@ function countByLane(lane) {
 
 function statusBadge(status) {
   const normalized = (status || "UNKNOWN").toLowerCase();
-  const className = normalized === "picked_up" ? "running" : normalized;
+  const className = normalized === "picked_up" ? "running" : normalized === "harness_completed" ? "succeeded" : normalized;
   const label = statusLabel(status);
   return `<span class="badge ${className}">${escapeHtml(label)}</span>`;
 }
@@ -268,7 +268,7 @@ function statusLabel(status) {
     SUBMITTED: "Submitted",
     QUEUED: "Queued",
     PICKED_UP: "Running",
-    ACKNOWLEDGED: "Succeeded",
+    HARNESS_COMPLETED: "Succeeded",
     FAILED: "Failed",
   };
   return labels[status] || status || "Unknown";
