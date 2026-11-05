@@ -54,7 +54,7 @@ flowchart TD
     harness -->|PR_CREATED| cp
     harness -->|HARNESS_COMPLETED or JOB_FAILED| cp
     cp -->|append lifecycle events<br/>update status| db
-    ui -->|GET /jobs<br/>GET /jobs/{id}/events| cp
+    ui -->|GET jobs and events| cp
 ```
 
 For a successful job, the lifecycle is:
