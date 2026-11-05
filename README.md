@@ -8,52 +8,85 @@ It does not own agent reasoning, code-editing behavior, tool choices, or workflo
 
 ## Current Shape
 
-The current v0 is intentionally small:
+The current v0 is intentionally small, but it now exercises the full factory path:
 
 - A control-plane Lambda exposed through a Lambda Function URL
 - A worker Lambda triggered by SQS
 - A DynamoDB table for job records and embedded lifecycle events
 - An SQS queue for dispatching jobs from the control plane to the worker
+- An ECS Fargate harness task launched by the worker
+- An ECR-hosted harness container image
 - CloudWatch log groups with short retention
 - A small static UI served by the control-plane Lambda
 - Terraform-managed infrastructure
 
-There is no API Gateway, ECS, EC2, RDS, NAT Gateway, VPC, SAM, or CDK.
+There is no API Gateway, EC2, RDS, NAT Gateway, SAM, or CDK.
 
 ## Flow
 
 ```mermaid
 flowchart TD
-    client[Browser / API client]
-    control[control-plane Lambda]
-    db[(DynamoDB jobs table)]
+    ui[Browser / API client]
+    cp[control-plane Lambda<br/>Function URL]
+    db[(DynamoDB<br/>jobs + events)]
     queue[SQS queue]
-    worker[worker Lambda]
+    dispatcher[worker Lambda<br/>dispatcher]
+    ecs[ECS Fargate task]
+    harness[factory-harness container]
+    codex[Codex CLI]
+    target[notification-hub repo]
+    github[GitHub PR]
 
-    client -->|POST /jobs| control
-    control -->|1. write SUBMITTED job| db
-    control -->|2. send job message| queue
-    control -->|3. record QUEUED after send succeeds| db
-    queue -->|4. trigger worker| worker
-    worker -->|5. update PICKED_UP| db
+    ui -->|POST /jobs| cp
+    cp -->|store SUBMITTED| db
+    cp -->|send job message| queue
+    cp -->|record QUEUED| db
+    queue -->|trigger| dispatcher
+    dispatcher -->|record PICKED_UP| db
+    dispatcher -->|RunTask| ecs
+    dispatcher -->|record SANDBOX_STARTED<br/>task ARN| db
+    ecs --> harness
+    harness -->|HARNESS_STARTED| cp
+    harness -->|clone branch edit commit| target
+    harness --> codex
+    codex -->|code changes| target
+    harness -->|push branch + open PR| github
+    harness -->|PR_CREATED| cp
+    harness -->|HARNESS_COMPLETED or JOB_FAILED| cp
+    cp -->|append lifecycle events<br/>update status| db
+    ui -->|GET /jobs<br/>GET /jobs/{id}/events| cp
 ```
 
-For a submitted job, the current lifecycle is:
+For a successful job, the lifecycle is:
 
 ```text
 POST /jobs
   │
   ▼
-SUBMITTED  - control plane accepted and stored the job
+SUBMITTED         - control plane accepted and stored the job
   │
   ▼
-QUEUED     - control plane sent the job message to SQS
+QUEUED            - control plane sent the job message to SQS
   │
   ▼
-PICKED_UP  - worker Lambda received the SQS message
+PICKED_UP         - worker Lambda received the SQS message
+  │
+  ▼
+SANDBOX_STARTED   - worker Lambda started the Fargate harness task
+  │
+  ▼
+HARNESS_STARTED   - harness container started running
+  │
+  ▼
+PR_CREATED        - harness pushed a branch and opened a GitHub PR
+  │
+  ▼
+HARNESS_COMPLETED - harness finished successfully
 ```
 
-The worker currently only proves that it received the job from SQS. It does not perform real software-factory work yet.
+On failure, the harness reports `JOB_FAILED` through the same event endpoint, and the UI shows a short failure reason on the card.
+
+The current harness uses Codex CLI inside the Fargate container to make the code change, then the harness owns the Git lifecycle: commit, push branch, open PR, and report results back to the control plane.
 
 ## API
 
@@ -108,7 +141,7 @@ The control plane validates the request, writes a DynamoDB job record, sends a m
 GET /jobs
 ```
 
-Returns job summaries and counts for the UI board.
+Returns job summaries and counts for the UI board. Job summaries include derived PR links and short failure reasons when available.
 
 ### Get Job
 
@@ -125,6 +158,28 @@ GET /jobs/{jobId}/events
 ```
 
 Returns the lifecycle event timeline for a job.
+
+### Append Job Event
+
+```http
+POST /jobs/{jobId}/events
+```
+
+Used by the harness container to report lifecycle events back to the control plane.
+
+Example:
+
+```json
+{
+  "type": "HARNESS_COMPLETED",
+  "message": "Harness completed successfully.",
+  "details": {
+    "commitSha": "abc123"
+  }
+}
+```
+
+`HARNESS_COMPLETED` moves the job to the finished/succeeded lane. `JOB_FAILED` moves it to the finished/failed lane.
 
 ## Repository Layout
 
