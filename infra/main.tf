@@ -172,6 +172,27 @@ resource "aws_iam_role_policy_attachment" "harness_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy" "harness_task_execution_secrets" {
+  name = "${var.project_name}-harness-task-execution-secrets"
+  role = aws_iam_role.harness_task_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameters"
+        ]
+        Resource = [
+          var.github_token_parameter_arn,
+          var.openai_api_key_parameter_arn
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_lambda_function" "control_plane" {
   function_name = "${var.project_name}-control-plane"
   role          = aws_iam_role.control_plane_lambda.arn
@@ -391,6 +412,17 @@ resource "aws_ecs_task_definition" "harness" {
       name      = "harness"
       image     = var.harness_image
       essential = true
+
+      secrets = [
+        {
+          name      = "GITHUB_TOKEN"
+          valueFrom = var.github_token_parameter_arn
+        },
+        {
+          name      = "OPENAI_API_KEY"
+          valueFrom = var.openai_api_key_parameter_arn
+        }
+      ]
 
       logConfiguration = {
         logDriver = "awslogs"

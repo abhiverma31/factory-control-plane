@@ -291,6 +291,21 @@ h1 {
   font-size: 0.86rem;
 }
 
+.pr-link {
+  color: var(--green);
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.pr-link:hover {
+  text-decoration: underline;
+}
+
+.failure-reason {
+  color: var(--red);
+}
+
 .badge {
   border-radius: 999px;
   padding: 0.25rem 0.6rem;

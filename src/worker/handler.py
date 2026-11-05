@@ -76,6 +76,7 @@ def start_harness_task(job):
                         {"name": "TITLE", "value": job["title"]},
                         {"name": "DESCRIPTION", "value": job["description"]},
                         {"name": "CONTROL_PLANE_URL", "value": CONTROL_PLANE_URL},
+                        {"name": "CHANGE_MODE", "value": "codex"},
                     ],
                 }
             ]

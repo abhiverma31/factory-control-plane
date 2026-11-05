@@ -152,7 +152,7 @@ function renderTable() {
       <td>${escapeHtml(job.workflowId || "")}</td>
       <td>${statusBadge(job.status)}</td>
       <td>${relativeTime(job.updatedAt)}</td>
-      <td>${escapeHtml(job.latestEventMessage || "")}</td>
+      <td>${summaryMessage(job)}${prLink(job)}</td>
     `;
     row.addEventListener("click", () => openDetails(job.jobId));
     elements.jobsTableBody.appendChild(row);
@@ -169,13 +169,17 @@ function createRunCard(job) {
       ${statusBadge(job.status)}
     </div>
     <div class="meta">${shortId(job.jobId)} · ${escapeHtml(job.workflowId || "")}</div>
-    <div class="meta">${escapeHtml(job.latestEventMessage || "")}</div>
+    <div class="meta">${summaryMessage(job)}</div>
     <div class="meta-row">
       <span>▤ Lambda worker</span>
       <span>${relativeTime(job.updatedAt)}</span>
     </div>
+    ${prLink(job)}
   `;
   card.addEventListener("click", () => openDetails(job.jobId));
+  card.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", (event) => event.stopPropagation());
+  });
   return card;
 }
 
@@ -272,6 +276,22 @@ function statusLabel(status) {
     FAILED: "Failed",
   };
   return labels[status] || status || "Unknown";
+}
+
+function prLink(job) {
+  if (!job.pullRequestUrl) {
+    return "";
+  }
+
+  return `<a class="pr-link" href="${escapeHtml(job.pullRequestUrl)}" target="_blank" rel="noopener noreferrer">Open PR</a>`;
+}
+
+function summaryMessage(job) {
+  if (job.status === "FAILED" && job.failureReason) {
+    return `<span class="failure-reason">${escapeHtml(job.failureReason)}</span>`;
+  }
+
+  return escapeHtml(job.latestEventMessage || "");
 }
 
 function shortId(id) {

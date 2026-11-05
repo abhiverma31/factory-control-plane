@@ -208,10 +208,39 @@ def list_jobs():
                 "updatedAt": job.get("updatedAt"),
                 "latestEventType": latest_event.get("type"),
                 "latestEventMessage": latest_event.get("message"),
+                "pullRequestUrl": pull_request_url(events),
+                "failureReason": failure_reason(events),
             }
         )
 
     return json_response(200, {"jobs": summaries, "counts": counts})
+
+def pull_request_url(events):
+    for event in reversed(events):
+        if event.get("type") == "PR_CREATED":
+            details = event.get("details", {})
+            url = details.get("url")
+            if isinstance(url, str) and url:
+                return url
+    return None
+
+def failure_reason(events):
+    for event in reversed(events):
+        if event.get("type") == "JOB_FAILED":
+            details = event.get("details", {})
+            error = details.get("error")
+            if isinstance(error, str) and error:
+                return shorten(error, 180)
+            message = event.get("message")
+            if isinstance(message, str) and message:
+                return shorten(message, 180)
+    return None
+
+def shorten(value, limit):
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 1]}..."
 
 def get_job(job_id):
     response = jobs_table.get_item(Key={"jobId": job_id})

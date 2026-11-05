@@ -14,3 +14,13 @@ variable "harness_image" {
   description = "Container image used by the factory harness Fargate task."
   type        = string
 }
+
+variable "github_token_parameter_arn" {
+  description = "SSM SecureString parameter ARN containing the GitHub token for the harness task."
+  type        = string
+}
+
+variable "openai_api_key_parameter_arn" {
+  description = "SSM SecureString parameter ARN containing the OpenAI API key for the harness task."
+  type        = string
+}
