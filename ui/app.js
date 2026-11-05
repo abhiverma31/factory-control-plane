@@ -29,6 +29,7 @@ const elements = {
   newRunDialog: document.querySelector("#newRunDialog"),
   workflowSelect: document.querySelector("#workflowSelect"),
   newRunForm: document.querySelector("#newRunForm"),
+  refreshButton: document.querySelector("#refreshButton"),
 };
 
 document.querySelector("#newRunButton").addEventListener("click", () => {
@@ -44,6 +45,8 @@ document.querySelector("#cancelRunButton").addEventListener("click", () => {
 });
 
 document.querySelector("#closeDrawerButton").addEventListener("click", closeDrawer);
+
+elements.refreshButton.addEventListener("click", refreshJobs);
 
 document.querySelectorAll(".view-button").forEach((button) => {
   button.addEventListener("click", () => {
@@ -78,7 +81,6 @@ elements.newRunForm.addEventListener("submit", async (event) => {
 
 async function init() {
   await Promise.all([loadWorkflows(), refreshJobs()]);
-  setInterval(refreshJobs, 10000);
 }
 
 async function loadWorkflows() {

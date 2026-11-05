@@ -149,6 +149,12 @@ h1 {
   color: var(--muted);
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .primary-button,
 .secondary-button,
 .icon-button,
