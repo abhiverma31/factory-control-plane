@@ -88,6 +88,8 @@ On failure, the harness reports `JOB_FAILED` through the same event endpoint, an
 
 The current harness uses Codex CLI inside the Fargate container to make the code change, then the harness owns the Git lifecycle: commit, push branch, open PR, and report results back to the control plane.
 
+For the fuller component boundary and lifecycle view, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## API
 
 The Lambda Function URL serves the prototype UI at `/` and exposes the control-plane API.
