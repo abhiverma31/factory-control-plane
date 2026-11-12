@@ -16,9 +16,11 @@ const elements = {
   countSucceeded: document.querySelector("#countSucceeded"),
   queuedCount: document.querySelector("#queuedCount"),
   runningCount: document.querySelector("#runningCount"),
+  needsInputCount: document.querySelector("#needsInputCount"),
   finishedCount: document.querySelector("#finishedCount"),
   queuedList: document.querySelector("#queuedList"),
   runningList: document.querySelector("#runningList"),
+  needsInputList: document.querySelector("#needsInputList"),
   finishedList: document.querySelector("#finishedList"),
   boardView: document.querySelector("#boardView"),
   tableView: document.querySelector("#tableView"),
@@ -116,6 +118,7 @@ function renderCounts() {
 
   elements.queuedCount.textContent = countByLane("queued");
   elements.runningCount.textContent = countByLane("running");
+  elements.needsInputCount.textContent = countByLane("needs-input");
   elements.finishedCount.textContent = countByLane("finished");
 }
 
@@ -123,6 +126,7 @@ function renderBoard() {
   const lanes = {
     queued: elements.queuedList,
     running: elements.runningList,
+    "needs-input": elements.needsInputList,
     finished: elements.finishedList,
   };
 
@@ -212,6 +216,7 @@ async function openDetails(jobId) {
       <div class="meta">Workflow</div>
       <p>${escapeHtml(job.workflowId || "")}</p>
     </div>
+    ${renderClarificationPanel(job)}
     <div class="detail-block">
       <div class="meta">Timeline</div>
       <div class="timeline">
@@ -219,6 +224,76 @@ async function openDetails(jobId) {
       </div>
     </div>
   `;
+  bindClarificationForm(job);
+}
+
+function renderClarificationPanel(job) {
+  if (job.status !== "NEEDS_CLARIFICATION") {
+    return "";
+  }
+
+  const clarification = latestClarificationRequest(job.messages || []);
+  if (!clarification) {
+    return "";
+  }
+
+  const questions = Array.isArray(clarification.questions) ? clarification.questions : [];
+
+  return `
+    <div class="detail-block clarification-panel">
+      <div class="meta">Factory Questions</div>
+      <p>${escapeHtml(clarification.content || "Factory needs clarification before continuing.")}</p>
+      <ol class="question-list">
+        ${questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}
+      </ol>
+      <label>
+        Your clarification
+        <textarea id="clarificationText" rows="6" placeholder="Answer the factory questions here"></textarea>
+      </label>
+      <button class="primary-button" id="submitClarificationButton" type="button">Submit clarification</button>
+    </div>
+  `;
+}
+
+function bindClarificationForm(job) {
+  if (job.status !== "NEEDS_CLARIFICATION") {
+    return;
+  }
+
+  const textarea = document.querySelector("#clarificationText");
+  const button = document.querySelector("#submitClarificationButton");
+  if (!textarea || !button) {
+    return;
+  }
+
+  button.addEventListener("click", async () => {
+    const content = textarea.value.trim();
+    if (!content) {
+      textarea.focus();
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Submitting";
+
+    await apiFetch(`/jobs/${encodeURIComponent(job.jobId)}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+
+    await refreshJobs();
+    await openDetails(job.jobId);
+  });
+}
+
+function latestClarificationRequest(messages) {
+  for (const message of [...messages].reverse()) {
+    if (message.role === "factory" && message.type === "clarification_request") {
+      return message;
+    }
+  }
+  return null;
 }
 
 function closeDrawer() {
@@ -252,6 +327,9 @@ function laneForStatus(status) {
   if (status === "PICKED_UP") {
     return "running";
   }
+  if (status === "NEEDS_CLARIFICATION") {
+    return "needs-input";
+  }
   if (status === "HARNESS_COMPLETED" || status === "FAILED") {
     return "finished";
   }
@@ -274,6 +352,7 @@ function statusLabel(status) {
     SUBMITTED: "Submitted",
     QUEUED: "Queued",
     PICKED_UP: "Running",
+    NEEDS_CLARIFICATION: "Needs Input",
     HARNESS_COMPLETED: "Succeeded",
     FAILED: "Failed",
   };

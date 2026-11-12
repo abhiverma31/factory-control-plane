@@ -219,7 +219,7 @@ h1 {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(3, minmax(15rem, 1fr));
+  grid-template-columns: repeat(4, minmax(14rem, 1fr));
   gap: 1.25rem;
   align-items: start;
 }
@@ -331,6 +331,11 @@ h1 {
   background: #172336;
 }
 
+.badge.needs_clarification {
+  color: var(--amber);
+  background: var(--amber-bg);
+}
+
 .badge.succeeded {
   color: var(--green);
   background: var(--green-bg);
@@ -403,6 +408,21 @@ tbody tr:hover {
 .detail-block {
   border-top: 1px solid var(--line);
   padding-top: 1rem;
+}
+
+.clarification-panel {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.question-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--soft);
+}
+
+.question-list li + li {
+  margin-top: 0.5rem;
 }
 
 .timeline {

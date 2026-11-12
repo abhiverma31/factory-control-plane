@@ -43,15 +43,18 @@ WORKFLOWS = [
 ]
 APPENDABLE_EVENT_TYPES = {
     "HARNESS_STARTED",
+    "NEEDS_CLARIFICATION",
     "HARNESS_COMPLETED",
     "PR_CREATED",
     "JOB_FAILED",
 }
 APPENDABLE_STATUSES = {
+    "NEEDS_CLARIFICATION",
     "HARNESS_COMPLETED",
     "FAILED",
 }
 EVENT_STATUS_DEFAULTS = {
+    "NEEDS_CLARIFICATION": "NEEDS_CLARIFICATION",
     "HARNESS_COMPLETED": "HARNESS_COMPLETED",
     "JOB_FAILED": "FAILED",
 }
@@ -82,6 +85,8 @@ def lambda_handler(event, context):
 
     if method == "POST" and path.startswith("/jobs/"):
         parts = path.strip("/").split("/")
+        if len(parts) == 3 and parts[0] == "jobs" and parts[2] == "messages":
+            return append_user_message(parts[1], event)
         if len(parts) == 3 and parts[0] == "jobs" and parts[2] == "events":
             return append_job_event(parts[1], event)
 
@@ -127,20 +132,19 @@ def create_job(event):
                 "message": "Job accepted by control plane.",
             }
         ],
+        "messages": [
+            {
+                "messageId": str(uuid.uuid4()),
+                "role": "user",
+                "type": "requirement",
+                "content": description.strip(),
+                "createdAt": now,
+            }
+        ],
     }
 
     jobs_table.put_item(Item=job)
-    sqs.send_message(
-        QueueUrl=JOBS_QUEUE_URL,
-        MessageBody=json.dumps(
-            {
-                "jobId": job["jobId"],
-                "workflowId": job["workflowId"],
-                "title": job["title"],
-                "description": job["description"],
-            }
-        ),
-    )
+    enqueue_job(job)
 
     queued_at = utc_now()
     queued_event = {
@@ -192,6 +196,8 @@ def list_jobs():
         if status == "QUEUED":
             counts["queued"] += 1
         elif status == "PICKED_UP":
+            counts["active"] += 1
+        elif status == "NEEDS_CLARIFICATION":
             counts["active"] += 1
         elif status == "FAILED":
             counts["failed"] += 1
@@ -267,6 +273,73 @@ def get_job_events(job_id):
     )
 
 
+def append_user_message(job_id, event):
+    body, error = parse_json_body(event)
+    if error:
+        return json_response(400, {"message": error})
+
+    content = body.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return json_response(400, {"message": "content is required"})
+
+    existing = jobs_table.get_item(Key={"jobId": job_id}).get("Item")
+    if not existing:
+        return json_response(404, {"message": "Job not found"})
+
+    now = utc_now()
+    user_message = {
+        "messageId": str(uuid.uuid4()),
+        "role": "user",
+        "type": "clarification_answer",
+        "content": content.strip(),
+        "createdAt": now,
+    }
+    queued_event = {
+        "type": "JOB_QUEUED",
+        "timestamp": now,
+        "message": "Job re-queued after user clarification.",
+    }
+
+    jobs_table.update_item(
+        Key={"jobId": job_id},
+        UpdateExpression=(
+            "SET #status = :status, updatedAt = :updatedAt, "
+            "#messages = list_append(if_not_exists(#messages, :empty), :messages), "
+            "#events = list_append(#events, :events)"
+        ),
+        ExpressionAttributeNames={
+            "#status": "status",
+            "#messages": "messages",
+            "#events": "events",
+        },
+        ExpressionAttributeValues={
+            ":status": "QUEUED",
+            ":updatedAt": now,
+            ":messages": [user_message],
+            ":events": [queued_event],
+            ":empty": [],
+        },
+    )
+
+    enqueue_job(existing)
+
+    return get_job(job_id)
+
+
+def enqueue_job(job):
+    sqs.send_message(
+        QueueUrl=JOBS_QUEUE_URL,
+        MessageBody=json.dumps(
+            {
+                "jobId": job["jobId"],
+                "workflowId": job["workflowId"],
+                "title": job["title"],
+                "description": job["description"],
+            }
+        ),
+    )
+
+
 def append_job_event(job_id, event):
     body, error = parse_json_body(event)
     if error:
@@ -302,6 +375,17 @@ def append_job_event(job_id, event):
     if details:
         lifecycle_event["details"] = details
 
+    factory_message = None
+    if event_type == "NEEDS_CLARIFICATION":
+        factory_message = {
+            "messageId": str(uuid.uuid4()),
+            "role": "factory",
+            "type": "clarification_request",
+            "content": message.strip(),
+            "questions": details.get("questions", []),
+            "createdAt": now,
+        }
+
     expression_names = {
         "#events": "events",
     }
@@ -310,12 +394,26 @@ def append_job_event(job_id, event):
         ":events": [lifecycle_event],
     }
 
+    message_update = ""
+    if factory_message:
+        message_update = ", #messages = list_append(if_not_exists(#messages, :empty), :messages)"
+        expression_names["#messages"] = "messages"
+        expression_values[":messages"] = [factory_message]
+        expression_values[":empty"] = []
+
     if status:
-        update_expression = "SET #status = :status, updatedAt = :updatedAt, #events = list_append(#events, :events)"
+        update_expression = (
+            "SET #status = :status, updatedAt = :updatedAt, "
+            "#events = list_append(#events, :events)"
+            f"{message_update}"
+        )
         expression_names["#status"] = "status"
         expression_values[":status"] = status
     else:
-        update_expression = "SET updatedAt = :updatedAt, #events = list_append(#events, :events)"
+        update_expression = (
+            "SET updatedAt = :updatedAt, #events = list_append(#events, :events)"
+            f"{message_update}"
+        )
 
     jobs_table.update_item(
         Key={"jobId": job_id},
