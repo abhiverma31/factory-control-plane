@@ -54,6 +54,19 @@ def lambda_handler(event, context):
 
 
 def start_harness_task(job):
+    environment = [
+        {"name": "JOB_ID", "value": job["jobId"]},
+        {"name": "WORKFLOW_ID", "value": job["workflowId"]},
+        {"name": "TITLE", "value": job["title"]},
+        {"name": "DESCRIPTION", "value": job["description"]},
+        {"name": "CONTROL_PLANE_URL", "value": CONTROL_PLANE_URL},
+        {"name": "CHANGE_MODE", "value": "codex"},
+    ]
+    
+    # Pass answers as JSON if present (for resuming LangGraph workflows)
+    if job.get("answers"):
+        environment.append({"name": "ANSWERS", "value": json.dumps(job["answers"])})
+    
     response = ecs.run_task(
         cluster=HARNESS_CLUSTER_ARN,
         taskDefinition=HARNESS_TASK_DEFINITION,
@@ -70,14 +83,7 @@ def start_harness_task(job):
             "containerOverrides": [
                 {
                     "name": "harness",
-                    "environment": [
-                        {"name": "JOB_ID", "value": job["jobId"]},
-                        {"name": "WORKFLOW_ID", "value": job["workflowId"]},
-                        {"name": "TITLE", "value": job["title"]},
-                        {"name": "DESCRIPTION", "value": job["description"]},
-                        {"name": "CONTROL_PLANE_URL", "value": CONTROL_PLANE_URL},
-                        {"name": "CHANGE_MODE", "value": "codex"},
-                    ],
+                    "environment": environment,
                 }
             ]
         },

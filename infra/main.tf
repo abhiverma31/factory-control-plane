@@ -278,6 +278,28 @@ resource "aws_ecs_cluster" "factory" {
   name = "${var.project_name}-cluster"
 }
 
+resource "aws_iam_role_policy" "harness_task_dynamodb" {
+  name = "${var.project_name}-harness-task-dynamodb"
+  role = aws_iam_role.harness_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query"
+        ]
+        Resource = aws_dynamodb_table.checkpoints.arn
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "control_plane_lambda_queue" {
   name = "${var.project_name}-control-plane-queue"
   role = aws_iam_role.control_plane_lambda.id
@@ -413,6 +435,13 @@ resource "aws_ecs_task_definition" "harness" {
       image     = var.harness_image
       essential = true
 
+      environment = [
+        {
+          name  = "CHECKPOINTS_TABLE"
+          value = aws_dynamodb_table.checkpoints.name
+        }
+      ]
+
       secrets = [
         {
           name      = "GITHUB_TOKEN"
@@ -452,4 +481,21 @@ resource "aws_security_group" "harness" {
 
 resource "aws_ecr_repository" "harness" {
   name = "${var.project_name}/harness"
+}
+
+resource "aws_dynamodb_table" "checkpoints" {
+  name         = "${var.project_name}-checkpoints"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PK"
+  range_key    = "SK"
+
+  attribute {
+    name = "PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "SK"
+    type = "S"
+  }
 }

@@ -415,6 +415,59 @@ tbody tr:hover {
   gap: 0.85rem;
 }
 
+.questions-form {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.question-item {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.question-item label {
+  color: var(--soft);
+  line-height: 1.4;
+}
+
+.question-item label strong {
+  color: var(--green);
+}
+
+.question-answer {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #0b0e12;
+  color: var(--text);
+  padding: 0.8rem;
+  resize: vertical;
+}
+
+.question-answer:focus {
+  outline: none;
+  border-color: var(--green);
+}
+
+.prd-output {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.prd-content {
+  background: #0b0e12;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+  margin: 0;
+}
+
 .question-list {
   margin: 0;
   padding-left: 1.25rem;

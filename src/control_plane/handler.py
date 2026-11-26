@@ -33,6 +33,10 @@ def utc_now():
 
 WORKFLOWS = [
     {
+        "workflowId": "prd-generation",
+        "name": "PRD generation",
+    },
+    {
         "workflowId": "feature-development",
         "name": "Feature development",
     },
@@ -89,6 +93,8 @@ def lambda_handler(event, context):
             return append_user_message(parts[1], event)
         if len(parts) == 3 and parts[0] == "jobs" and parts[2] == "events":
             return append_job_event(parts[1], event)
+        if len(parts) == 3 and parts[0] == "jobs" and parts[2] == "answers":
+            return submit_answers(parts[1], event)
 
     if method == "GET" and path == "/health":
         return json_response(200, {"ok": True})
@@ -326,6 +332,53 @@ def append_user_message(job_id, event):
     return get_job(job_id)
 
 
+def submit_answers(job_id, event):
+    """Submit answers to questions for a paused LangGraph workflow."""
+    body, error = parse_json_body(event)
+    if error:
+        return json_response(400, {"message": error})
+
+    answers = body.get("answers")
+    if not isinstance(answers, dict) or not answers:
+        return json_response(400, {"message": "answers object is required"})
+
+    existing = jobs_table.get_item(Key={"jobId": job_id}).get("Item")
+    if not existing:
+        return json_response(404, {"message": "Job not found"})
+
+    now = utc_now()
+    queued_event = {
+        "type": "JOB_QUEUED",
+        "timestamp": now,
+        "message": "Job re-queued with answers.",
+    }
+
+    jobs_table.update_item(
+        Key={"jobId": job_id},
+        UpdateExpression=(
+            "SET #status = :status, updatedAt = :updatedAt, "
+            "answers = :answers, "
+            "#events = list_append(#events, :events)"
+        ),
+        ExpressionAttributeNames={
+            "#status": "status",
+            "#events": "events",
+        },
+        ExpressionAttributeValues={
+            ":status": "QUEUED",
+            ":updatedAt": now,
+            ":answers": answers,
+            ":events": [queued_event],
+        },
+    )
+
+    # Include answers in the job for SQS message
+    existing["answers"] = answers
+    enqueue_job(existing)
+
+    return get_job(job_id)
+
+
 def enqueue_job(job):
     sqs.send_message(
         QueueUrl=JOBS_QUEUE_URL,
@@ -335,6 +388,7 @@ def enqueue_job(job):
                 "workflowId": job["workflowId"],
                 "title": job["title"],
                 "description": job["description"],
+                "answers": job.get("answers"),
             }
         ),
     )

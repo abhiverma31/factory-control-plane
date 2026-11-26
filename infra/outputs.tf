@@ -17,3 +17,8 @@ output "harness_ecr_repository_url" {
   description = "ECR repository URL for the factory harness image."
   value       = aws_ecr_repository.harness.repository_url
 }
+
+output "checkpoints_table_name" {
+  description = "DynamoDB table name for LangGraph checkpoints."
+  value       = aws_dynamodb_table.checkpoints.name
+}

@@ -217,6 +217,7 @@ async function openDetails(jobId) {
       <p>${escapeHtml(job.workflowId || "")}</p>
     </div>
     ${renderClarificationPanel(job)}
+    ${renderPrdOutput(events.events || [])}
     <div class="detail-block">
       <div class="meta">Timeline</div>
       <div class="timeline">
@@ -239,13 +240,38 @@ function renderClarificationPanel(job) {
 
   const questions = Array.isArray(clarification.questions) ? clarification.questions : [];
 
+  // If we have structured questions, render individual answer fields
+  if (questions.length > 0) {
+    return `
+      <div class="detail-block clarification-panel">
+        <div class="meta">Factory Questions</div>
+        <p>${escapeHtml(clarification.content || "Factory needs clarification before continuing.")}</p>
+        <div class="questions-form" id="questionsForm">
+          ${questions.map((question, index) => `
+            <div class="question-item">
+              <label for="answer-${index}">
+                <strong>${index + 1}.</strong> ${escapeHtml(question)}
+              </label>
+              <textarea 
+                id="answer-${index}" 
+                data-question="${escapeHtml(question)}" 
+                rows="3" 
+                placeholder="Your answer..."
+                class="question-answer"
+              ></textarea>
+            </div>
+          `).join("")}
+        </div>
+        <button class="primary-button" id="submitAnswersButton" type="button">Submit answers</button>
+      </div>
+    `;
+  }
+
+  // Fallback to free-form textarea if no structured questions
   return `
     <div class="detail-block clarification-panel">
       <div class="meta">Factory Questions</div>
       <p>${escapeHtml(clarification.content || "Factory needs clarification before continuing.")}</p>
-      <ol class="question-list">
-        ${questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}
-      </ol>
       <label>
         Your clarification
         <textarea id="clarificationText" rows="6" placeholder="Answer the factory questions here"></textarea>
@@ -255,11 +281,63 @@ function renderClarificationPanel(job) {
   `;
 }
 
+function renderPrdOutput(events) {
+  for (const event of [...events].reverse()) {
+    if (event.type === "HARNESS_COMPLETED" && event.details?.output) {
+      return `
+        <div class="detail-block prd-output">
+          <div class="meta">Generated PRD</div>
+          <pre class="prd-content">${escapeHtml(event.details.output)}</pre>
+        </div>
+      `;
+    }
+  }
+  return "";
+}
+
 function bindClarificationForm(job) {
   if (job.status !== "NEEDS_CLARIFICATION") {
     return;
   }
 
+  // Handle structured answers (new flow)
+  const answersButton = document.querySelector("#submitAnswersButton");
+  if (answersButton) {
+    answersButton.addEventListener("click", async () => {
+      const answerFields = document.querySelectorAll(".question-answer");
+      const answers = {};
+      let allFilled = true;
+
+      answerFields.forEach((field) => {
+        const question = field.dataset.question;
+        const answer = field.value.trim();
+        if (!answer) {
+          allFilled = false;
+          field.focus();
+        }
+        answers[question] = answer;
+      });
+
+      if (!allFilled) {
+        return;
+      }
+
+      answersButton.disabled = true;
+      answersButton.textContent = "Submitting...";
+
+      await apiFetch(`/jobs/${encodeURIComponent(job.jobId)}/answers`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ answers }),
+      });
+
+      await refreshJobs();
+      await openDetails(job.jobId);
+    });
+    return;
+  }
+
+  // Handle free-form clarification (legacy flow)
   const textarea = document.querySelector("#clarificationText");
   const button = document.querySelector("#submitClarificationButton");
   if (!textarea || !button) {
